@@ -19,6 +19,7 @@ struct Chip {
 }
 
 fn init_cpu() -> Chip {
+    // Defaults
     let mut chip = Chip {
         memory:     [0u8; 4096],
         w_buffer:   [[false; 64]; 32],
@@ -43,9 +44,8 @@ fn init_cpu() -> Chip {
                      0xF0, 0x80, 0x80, 0x80, 0xF0, // C
                      0xE0, 0x90, 0x90, 0x90, 0xE0, // D
                      0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-                     0xF0, 0x80, 0xF0, 0x80, 0x80] // F
+                     0xF0, 0x80, 0xF0, 0x80, 0x80], // F
     };
-
     /*
         Load Fonts:
         Loads Fonts in Memory starting at location 0x50
@@ -53,10 +53,11 @@ fn init_cpu() -> Chip {
     for i in 0..chip.fonts.len(){
         chip.memory[i+80] =chip.fonts[i];
     }
-
     /*
         Read Load Rom:
-
+        Parses CLI Arguments
+        ARG[1] : Rom_Name
+        Reads Rom_Name and stores contents into Memory
      */
     let args: Vec<String> = env::args().collect();
     let rom = args.get(1).expect("Error: No ROM file specified").to_string();
@@ -66,7 +67,25 @@ fn init_cpu() -> Chip {
         chip.memory[j + 512] = rom_data[j];
     }
 
+    // Register Initializations
+    chip.pc = 512;
+
     chip
+}
+
+fn execute(chip: &mut Chip){
+
+    for i in 0..272 {       //temp for debugging
+        // Fetch
+        let inst = ((chip.memory[chip.pc as usize] as u16) << 8) | (chip.memory[(chip.pc + 1) as usize] as u16);
+        println!("Fetched instruction: 0x{:04X} at PC: 0x{:03X}", inst, chip.pc);
+        chip.pc += 2;
+        // Decode
+
+        //Execute
+
+
+    }
 }
 
 fn mem_dump(memory: &[u8; 4096], exit_flag: i32) {
@@ -93,6 +112,7 @@ fn mem_dump(memory: &[u8; 4096], exit_flag: i32) {
 }
 
 fn main() {
-    let chip = init_cpu();
+    let mut chip = init_cpu();
     mem_dump(&chip.memory, 0);
+    execute(&mut chip);
 }
