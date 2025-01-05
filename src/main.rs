@@ -1,5 +1,8 @@
 use std::{env, fs};
 use std::process;
+use raylib::*;
+use raylib::color::Color;
+use raylib::prelude::RaylibDraw;
 
 const MY_BLUE: &str = "\x1b[34m";   // Blue color
 const MY_GREEN: &str = "\x1b[32m";  // Green color
@@ -74,29 +77,32 @@ fn init_cpu() -> Chip {
 }
 
 fn execute(chip: &mut Chip){
+    // Fetch
+    let inst = ((chip.memory[chip.pc as usize] as u16) << 8) | (chip.memory[(chip.pc + 1) as usize] as u16);
+    println!("Fetched instruction: 0x{}{:04X}{} at PC: 0x{:03X}", if inst == 0x0000 {MY_BLUE} else {MY_GREEN}  ,inst,RESET, chip.pc);
+    chip.pc += 2;
+    // Decode
+    let opcode : u16  = (inst & 0xF000) >> 12;
+    let x : u16 = (inst & 0x0F00) >> 8;
+    let y : u16 = (inst & 0x00F0) >> 4;
+    let n : u16 = inst & 0x000F;
+    let nn : u16 = inst & 0x00FF;
+    let nnn : u16 = inst & 0x0FFF;
 
-    for i in 0..272 {       //temp for debugging
-        // Fetch
-        let inst = ((chip.memory[chip.pc as usize] as u16) << 8) | (chip.memory[(chip.pc + 1) as usize] as u16);
-        println!("Fetched instruction: 0x{:04X} at PC: 0x{:03X}", inst, chip.pc);
-        chip.pc += 2;
-        // Decode
-        let opcode : u16  = (inst & 0xF000) >> 12;
-        let x : u16 = (inst & 0x0F00) >> 8;
-        let y : u16 = (inst & 0x00F0) >> 4;
-        let n : u16 = inst & 0x000F;
-        let nn : u16 = inst & 0x00FF;
-        let nnn : u16 = inst & 0x0FFF;
-        println!("Opcode : 0x{:04X}",opcode);
-        println!("X :      0x{:04X}",x);
-        println!("Y :      0x{:04X}",y);
-        println!("N :      0x{:04X}",n);
-        println!("NN :     0x{:04X}",nn);
-        println!("NNN :    0x{:04X}",nnn);
-        //Execute
+    println!("Opcode : 0x{:04X}",opcode);   //0xF000
+    println!("X :      0x{:04X}",x);        //0x0F00
+    println!("Y :      0x{:04X}",y);        //0x00F0
+    println!("N :      0x{:04X}",n);        //0x000F
+    println!("NN :     0x{:04X}",nn);       //0x00FF
+    println!("NNN :    0x{:04X}",nnn);      //0x0FFF
+    //Execute
+    match inst {
 
-
+        _ => {}
     }
+
+
+
 }
 
 fn mem_dump(memory: &[u8; 4096], exit_flag: i32) {
@@ -124,6 +130,26 @@ fn mem_dump(memory: &[u8; 4096], exit_flag: i32) {
 
 fn main() {
     let mut chip = init_cpu();
-    mem_dump(&chip.memory, 0);
-    execute(&mut chip);
+    //mem_dump(&chip.memory, 0);
+
+    let (mut rl, thread) = raylib::init()
+        .size(640,320)
+        .title("Chip 8")
+        .build();
+
+    let mut last_update = std::time::Instant::now();
+    let update_interval = std::time::Duration::from_millis(16);
+
+    while !rl.window_should_close(){
+
+        let now = std::time::Instant::now();
+        if now.duration_since(last_update) >= update_interval {
+            execute(&mut chip); // Process a CPU cycle
+            last_update = now;
+        }
+
+        let mut d = rl.begin_drawing(&thread);
+        d.clear_background(Color::WHITE);
+    }
+
 }
