@@ -1,8 +1,7 @@
 use std::{env, fs};
 use std::process;
-use raylib::*;
-use raylib::color::Color;
-use raylib::prelude::RaylibDraw;
+use rand::rngs;
+use raylib::prelude::*;
 
 const MY_BLUE: &str = "\x1b[34m";   // Blue color
 const MY_GREEN: &str = "\x1b[32m";  // Green color
@@ -14,6 +13,7 @@ struct Chip {
     w_buffer:   [[bool; 64]; 32],
     gpr:        [u8; 16],
     stack:      [u16; 16],
+    s_ptr:      u8,
     pc:         u16,
     index:      u16,
     d_timer:    u8,
@@ -28,6 +28,7 @@ fn init_cpu() -> Chip {
         w_buffer:   [[false; 64]; 32],
         gpr:        [0u8; 16],
         stack:      [0u16; 16],
+        s_ptr:      0,
         pc:         0,
         index:      0,
         d_timer:    0,
@@ -89,20 +90,130 @@ fn execute(chip: &mut Chip){
     let nn : u16 = inst & 0x00FF;
     let nnn : u16 = inst & 0x0FFF;
 
-    println!("Opcode : 0x{:04X}",opcode);   //0xF000
-    println!("X :      0x{:04X}",x);        //0x0F00
-    println!("Y :      0x{:04X}",y);        //0x00F0
-    println!("N :      0x{:04X}",n);        //0x000F
-    println!("NN :     0x{:04X}",nn);       //0x00FF
-    println!("NNN :    0x{:04X}",nnn);      //0x0FFF
     //Execute
-    match inst {
+    match opcode {
+        0x0 => {
+            match nn {
+                0x00E0 => {     // Clear Screen
+                    for i in 0..chip.w_buffer.len() {
+                        for j in i..chip.w_buffer.len(){
+                            chip.w_buffer[i][j] = false;
+                        }
+                    }
+                    println!("CLS");
+                }
+                0x00EE => {     // Return from Subroutine
+                    chip.pc = chip.stack[chip.s_ptr as usize];
+                    chip.s_ptr -= 1;
+                    println!("RET");
+                }
 
+                _ => {} }
+        }
+        0x1 => {    // Jump
+            chip.pc = nnn;
+            println!("JP {:04X}", nnn);
+        }
+        0x2 => {    //Subroutine NNN
+            chip.s_ptr += 1;
+            chip.stack[chip.s_ptr as usize] = chip.pc;
+            chip.pc = nnn;
+            println!("CALL {:04X}", nnn);
+        }
+        0x3 => {    //Skip Conditional
+            let check : bool = chip.gpr[x as usize] == nn as u8;
+            if check { chip.pc += 2; }
+            println!("SE V{:04X} {}", x, check);
+        }
+        0x4 => {    //Skip Conditional
+            let check : bool = chip.gpr[x as usize] != nn as u8;
+            if check { chip.pc += 2; }
+            println!("SNE V{:04X} {}", x, check);
+        }
+        0x5 => {    //Skip Conditional
+            let check : bool = chip.gpr[x as usize] == chip.gpr[y as usize];
+            if check { chip.pc += 2; }
+            println!("SE V{:04X} {}", x, check);
+        }
+        0x6 => {
+            chip.gpr[x as usize] = nn as u8;
+            println!("LD V{:04X}", x);
+        }
+        0x7 => {
+            chip.gpr[x as usize] = chip.gpr[x as usize] + nn as u8;
+            println!("ADD V{:04X}", x);
+        }
+        0x8 => {
+            match n {
+                0 => {
+                    chip.gpr[x as usize] = chip.gpr[y as usize];
+                    println!("LD V{:04X} V{:04X}",x,y);
+                }
+                1 => {
+                    chip.gpr[x as usize] = chip.gpr[x as usize] | chip.gpr[y as usize];
+                    println!("OR V{:04X} V{:04X}",x,y);
+                }
+                2 => {
+                    chip.gpr[x as usize] = chip.gpr[x as usize] & chip.gpr[y as usize];
+                    println!("AND V{:04X} V{:04X}",x,y);
+                }
+                3 => {
+                    chip.gpr[x as usize] = chip.gpr[x as usize] ^ chip.gpr[y as usize];
+                    println!("XOR V{:04X} V{:04X}",x,y);
+                }
+                4 => {}
+                5 => {}
+                6 => {
+                    let lsb : u8  = chip.gpr[x as usize] & (0x0001);
+                    if lsb == 0x0001 {
+                        chip.gpr[n as usize] = 1;
+                    } else {
+                        chip.gpr[n as usize] = 0;
+                    }
+                    chip.gpr[x as usize] /= 2;
+                    println!("SHR V{:04X} {{,V{:04X}}}",x,y);
+                }
+                7 => {}
+                E => {
+                    let lsb : u8  = chip.gpr[x as usize] & (0x0001);
+                    if lsb == 0x0001 {
+                        chip.gpr[n as usize] = 1;
+                    } else {
+                        chip.gpr[n as usize] = 0;
+                    }
+                    chip.gpr[x as usize] *= 2;
+                    println!("SHL V{:04X} {{,V{:04X}}}",x,y);
+                }
+                _ => {}
+            }
+        }
+        0x9 => {    //Skip Conditional
+            if chip.gpr[x as usize] != chip.gpr[y as usize] { chip.pc += 2; }
+            println!("SNE V{} V{}",x,y);
+        }
+        0xA => {
+            chip.index = nnn;
+            println!("LD I {}",nnn)
+        }
+        0xB => {
+            chip.pc = (chip.gpr[0] as u16) + nnn;
+            println!("JP V0 {}",nnn);
+        }
+        0xC => {
+
+        }
+        0xD => {
+
+        }
+        0xE => {
+
+        }
+        0xF => {
+
+        }
         _ => {}
     }
-
-
-
+    print!("\n");
 }
 
 fn mem_dump(memory: &[u8; 4096], exit_flag: i32) {
@@ -130,7 +241,7 @@ fn mem_dump(memory: &[u8; 4096], exit_flag: i32) {
 
 fn main() {
     let mut chip = init_cpu();
-    //mem_dump(&chip.memory, 0);
+    mem_dump(&chip.memory, 0);
 
     let (mut rl, thread) = raylib::init()
         .size(640,320)
