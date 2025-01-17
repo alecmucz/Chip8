@@ -1,6 +1,7 @@
 use std::{env, fs};
 use std::process;
-use rand::rngs;
+use rand::{thread_rng, Rng};
+use raylib::consts::KeyboardKey::*;
 use raylib::prelude::*;
 
 const MY_BLUE: &str = "\x1b[34m";   // Blue color
@@ -18,7 +19,8 @@ struct Chip {
     index:      u16,
     d_timer:    u8,
     s_timer:    u8,
-    fonts:      [u8; 80]
+    fonts:      [u8; 80],
+    keys:       [(char,u8, KeyboardKey); 16]
 }
 
 fn init_cpu() -> Chip {
@@ -33,22 +35,29 @@ fn init_cpu() -> Chip {
         index:      0,
         d_timer:    0,
         s_timer:    0,
-        fonts:      [0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
-                     0x20, 0x60, 0x20, 0x20, 0x70, // 1
-                     0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
-                     0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
-                     0x90, 0x90, 0xF0, 0x10, 0x10, // 4
-                     0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
-                     0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
-                     0xF0, 0x10, 0x20, 0x40, 0x40, // 7
-                     0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
-                     0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
-                     0xF0, 0x90, 0xF0, 0x90, 0x90, // A
-                     0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
-                     0xF0, 0x80, 0x80, 0x80, 0xF0, // C
-                     0xE0, 0x90, 0x90, 0x90, 0xE0, // D
-                     0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-                     0xF0, 0x80, 0xF0, 0x80, 0x80], // F
+        fonts:      [0xF0, 0x90, 0x90, 0x90, 0xF0,             // 0
+                     0x20, 0x60, 0x20, 0x20, 0x70,             // 1
+                     0xF0, 0x10, 0xF0, 0x80, 0xF0,             // 2
+                     0xF0, 0x10, 0xF0, 0x10, 0xF0,             // 3
+                     0x90, 0x90, 0xF0, 0x10, 0x10,             // 4
+                     0xF0, 0x80, 0xF0, 0x10, 0xF0,             // 5
+                     0xF0, 0x80, 0xF0, 0x90, 0xF0,             // 6
+                     0xF0, 0x10, 0x20, 0x40, 0x40,             // 7
+                     0xF0, 0x90, 0xF0, 0x90, 0xF0,             // 8
+                     0xF0, 0x90, 0xF0, 0x10, 0xF0,             // 9
+                     0xF0, 0x90, 0xF0, 0x90, 0x90,             // A
+                     0xE0, 0x90, 0xE0, 0x90, 0xE0,             // B
+                     0xF0, 0x80, 0x80, 0x80, 0xF0,             // C
+                     0xE0, 0x90, 0x90, 0x90, 0xE0,             // D
+                     0xF0, 0x80, 0xF0, 0x80, 0xF0,             // E
+                     0xF0, 0x80, 0xF0, 0x80, 0x80],            // F
+        keys: [
+            ('1', 0x1, KEY_ONE), ('2', 0x2, KEY_TWO), ('3', 0x3, KEY_THREE), ('4', 0xC, KEY_FOUR),
+            ('Q', 0x4, KEY_Q),   ('W', 0x5, KEY_W),   ('E', 0x6, KEY_E),     ('R', 0xD, KEY_R),
+            ('A', 0x7, KEY_A),   ('S', 0x8, KEY_S),   ('D', 0x9, KEY_D),     ('F', 0xE, KEY_F),
+            ('Z', 0xA, KEY_Z),   ('X', 0x0, KEY_X),   ('C', 0xB, KEY_C),     ('V', 0xF, KEY_V)
+        ]
+
     };
     /*
         Load Fonts:
@@ -77,7 +86,7 @@ fn init_cpu() -> Chip {
     chip
 }
 
-fn execute(chip: &mut Chip){
+fn execute(chip: &mut Chip, rl_handle : &mut RaylibHandle){
     // Fetch
     let inst = ((chip.memory[chip.pc as usize] as u16) << 8) | (chip.memory[(chip.pc + 1) as usize] as u16);
     println!("Fetched instruction: 0x{}{:04X}{} at PC: 0x{:03X}", if inst == 0x0000 {MY_BLUE} else {MY_GREEN}  ,inst,RESET, chip.pc);
@@ -94,7 +103,7 @@ fn execute(chip: &mut Chip){
     match opcode {
         0x0 => {
             match nn {
-                0x00E0 => {     // Clear Screen
+                0xE0 => {     // Clear Screen
                     for i in 0..chip.w_buffer.len() {
                         for j in i..chip.w_buffer.len(){
                             chip.w_buffer[i][j] = false;
@@ -102,7 +111,7 @@ fn execute(chip: &mut Chip){
                     }
                     println!("CLS");
                 }
-                0x00EE => {     // Return from Subroutine
+                0xEE => {     // Return from Subroutine
                     chip.pc = chip.stack[chip.s_ptr as usize];
                     chip.s_ptr -= 1;
                     println!("RET");
@@ -200,16 +209,65 @@ fn execute(chip: &mut Chip){
             println!("JP V0 {}",nnn);
         }
         0xC => {
-
+            let mut rnd_byte = thread_rng().gen_range(0..=255);
+            chip.gpr[x as usize] = (rnd_byte & nn) as u8;
+            println!("RND V{}, {}",x,rnd_byte);
         }
         0xD => {
 
         }
         0xE => {
-
+            match nn {
+                0x9E => {
+                    if let Some(&(_, chip_key, rl_key)) = chip.keys.iter().find(|&&(key, _, _)| key == chip.gpr[x as usize] as char) {
+                        if rl_handle.is_key_down(rl_key) && chip_key == chip.gpr[x as usize] {
+                            chip.pc += 2;
+                            println!("SKP V{}", x);
+                        }
+                    }
+                }
+                0xA1 => {
+                    if let Some(&(_, _, rl_key)) = chip.keys.iter().find(|&&(_, chip_key, _)| chip_key == chip.gpr[x as usize]) {
+                        if rl_handle.is_key_up(rl_key) {
+                            chip.pc += 2;
+                            println!("SKNP V{}", x);
+                        }
+                    }
+                }
+                _ => {}
+            }
         }
         0xF => {
+            match nn {
+                0x07 => {
 
+                }
+                0x0A => {
+
+                }
+                0x15 => {
+
+                }
+                0x18 => {
+
+                }
+                0x1E => {
+
+                }
+                0x29 => {
+
+                }
+                0x33 => {
+
+                }
+                0x55 => {
+
+                }
+                0x65 => {
+
+                }
+                _ => {}
+            }
         }
         _ => {}
     }
@@ -243,21 +301,15 @@ fn main() {
     let mut chip = init_cpu();
     mem_dump(&chip.memory, 0);
 
-    let (mut rl, thread) = raylib::init()
+    let (mut rl, thread) = init()
         .size(640,320)
         .title("Chip 8")
         .build();
 
-    let mut last_update = std::time::Instant::now();
-    let update_interval = std::time::Duration::from_millis(16);
-
+    rl.set_target_fps(60);
     while !rl.window_should_close(){
 
-        let now = std::time::Instant::now();
-        if now.duration_since(last_update) >= update_interval {
-            execute(&mut chip); // Process a CPU cycle
-            last_update = now;
-        }
+        execute(&mut chip, &mut rl); // Process a CPU cycle
 
         let mut d = rl.begin_drawing(&thread);
         d.clear_background(Color::WHITE);
