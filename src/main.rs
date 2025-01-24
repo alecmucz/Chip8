@@ -105,7 +105,7 @@ fn execute(chip: &mut Chip, rl_handle : &mut RaylibHandle){
             match nn {
                 0xE0 => {     // Clear Screen
                     for i in 0..chip.w_buffer.len() {
-                        for j in i..chip.w_buffer.len(){
+                        for j in 0..chip.w_buffer.len(){
                             chip.w_buffer[i][j] = false;
                         }
                     }
@@ -170,8 +170,17 @@ fn execute(chip: &mut Chip, rl_handle : &mut RaylibHandle){
                     chip.gpr[x as usize] = chip.gpr[x as usize] ^ chip.gpr[y as usize];
                     println!("XOR V{:04X} V{:04X}",x,y);
                 }
-                4 => {}
-                5 => {}
+                4 => {
+                    let result : u16 = (chip.gpr[x as usize] + chip.gpr[y as usize]) as u16;
+                    chip.gpr[x as usize] = (result & 0xFF) as u8;
+                    chip.gpr[n as usize] = if result > 0xFF {1} else {0};
+                    println!("ADD {} {}",chip.gpr[x as usize], chip.gpr[y as usize]);
+                }
+                5 => {
+                    chip.gpr[0xF] = if chip.gpr[x as usize] >= chip.gpr[y as usize] {1} else {0};
+                    chip.gpr[x as usize] = chip.gpr[x as usize] - chip.gpr[y as usize];
+                    println!("SUB {} {}",chip.gpr[x as usize], chip.gpr[y as usize]);
+                }
                 6 => {
                     let lsb : u8  = chip.gpr[x as usize] & (0x0001);
                     if lsb == 0x0001 {
@@ -182,8 +191,12 @@ fn execute(chip: &mut Chip, rl_handle : &mut RaylibHandle){
                     chip.gpr[x as usize] /= 2;
                     println!("SHR V{:04X} {{,V{:04X}}}",x,y);
                 }
-                7 => {}
-                E => {
+                7 => {
+                    chip.gpr[0xF] = if chip.gpr[y as usize] >= chip.gpr[x as usize] {1} else {0};
+                    chip.gpr[x as usize] = chip.gpr[y as usize] - chip.gpr[x as usize];
+                }
+                #[allow(non_snake_case)]
+                _E => {
                     let lsb : u8  = chip.gpr[x as usize] & (0x0001);
                     if lsb == 0x0001 {
                         chip.gpr[n as usize] = 1;
@@ -193,7 +206,6 @@ fn execute(chip: &mut Chip, rl_handle : &mut RaylibHandle){
                     chip.gpr[x as usize] *= 2;
                     println!("SHL V{:04X} {{,V{:04X}}}",x,y);
                 }
-                _ => {}
             }
         }
         0x9 => {    //Skip Conditional
@@ -209,7 +221,7 @@ fn execute(chip: &mut Chip, rl_handle : &mut RaylibHandle){
             println!("JP V0 {}",nnn);
         }
         0xC => {
-            let mut rnd_byte = thread_rng().gen_range(0..=255);
+            let rnd_byte = thread_rng().gen_range(0..=255);
             chip.gpr[x as usize] = (rnd_byte & nn) as u8;
             println!("RND V{}, {}",x,rnd_byte);
         }
@@ -240,31 +252,52 @@ fn execute(chip: &mut Chip, rl_handle : &mut RaylibHandle){
         0xF => {
             match nn {
                 0x07 => {
-
+                    chip.gpr[x as usize] = chip.d_timer;
+                    println!("LD V{}, {}", chip.gpr[x as usize], chip.d_timer);
                 }
                 0x0A => {
-
+                    if rl_handle.get_key_pressed() == Option::from(KEY_NULL) {
+                        chip.pc -= 2;
+                        println!("Fx0A - Polling");
+                    } else {
+                        if let Some(pressed_key) = rl_handle.get_key_pressed() {
+                            if let Some(&(_, chip_key, _)) = chip.keys.iter().find(|&&(_, _, rl_key)| rl_key == pressed_key) {
+                                chip.gpr[x as usize] = chip_key;
+                            }
+                        }
+                    }
+                    println!("LD V{} {}", x, n);
                 }
                 0x15 => {
-
+                    chip.d_timer = chip.gpr[x as usize];
+                    println!("LD {}, V{}", chip.d_timer, chip.gpr[x as usize]);
                 }
                 0x18 => {
-
+                    chip.s_timer = chip.gpr[x as usize];
+                    println!("LD {}, V{}",chip.s_timer ,chip.gpr[x as usize]);
                 }
                 0x1E => {
-
+                    chip.index += chip.gpr[x as usize] as u16;
+                    println!("ADD {}, V{}", chip.index, chip.gpr[x as usize]);
                 }
                 0x29 => {
-
+                    chip.index = (chip.gpr[x as usize] as u16) * 5 + 80;
+                    println!("LD {}, V{}", n, x);
                 }
                 0x33 => {
 
                 }
                 0x55 => {
-
+                    for i in 0..chip.gpr.len() {
+                        chip.memory[chip.index as usize + i] = chip.gpr[i];
+                    }
+                    println!("LD [{}], V{}", chip.index, x);
                 }
                 0x65 => {
-
+                    for i in 0..chip.gpr.len() {
+                        chip.gpr[i] = chip.memory[chip.index as usize + i];
+                    }
+                    println!("LD V{}, [{}]", x, chip.index);
                 }
                 _ => {}
             }
@@ -297,6 +330,8 @@ fn mem_dump(memory: &[u8; 4096], exit_flag: i32) {
     }
 }
 
+
+
 fn main() {
     let mut chip = init_cpu();
     mem_dump(&chip.memory, 0);
@@ -306,8 +341,17 @@ fn main() {
         .title("Chip 8")
         .build();
 
+
+
     rl.set_target_fps(60);
     while !rl.window_should_close(){
+
+        if chip.s_timer > 0 {
+            if chip.s_timer == 1 {
+                print!("\x07");
+            }
+            chip.s_timer -= 1;
+        }
 
         execute(&mut chip, &mut rl); // Process a CPU cycle
 
